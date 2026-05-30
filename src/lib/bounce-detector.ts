@@ -6,7 +6,7 @@ const MIN_VELOCITY = 2; // minimum pixels/frame vertical velocity for valid boun
 const DEBOUNCE_MS = 800; // minimum time between bounces
 
 export class BounceDetector {
-  private trajectory: TrackPoint[] = [];
+  trajectory: TrackPoint[] = [];
   private lastBounceTime = 0;
 
   /**

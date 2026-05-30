@@ -61,6 +61,13 @@ export default function Home() {
         >
           Calibrar Quadra
         </button>
+
+        <button
+          onClick={() => router.push("/testar")}
+          className="w-full py-3 bg-zinc-800 text-white rounded-2xl font-medium hover:bg-zinc-700 active:bg-zinc-600 transition-colors border border-blue-700/50"
+        >
+          Testar com Vídeo
+        </button>
       </div>
 
       {/* Calibration status */}
