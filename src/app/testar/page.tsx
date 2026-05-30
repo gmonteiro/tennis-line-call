@@ -60,6 +60,9 @@ export default function TestarPage() {
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [videoSize, setVideoSize] = useState({ width: 1280, height: 720 });
   const [videoReady, setVideoReady] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [urlLoading, setUrlLoading] = useState(false);
+  const [urlError, setUrlError] = useState<string | null>(null);
 
   // Calibration
   const [calPoints, setCalPoints] = useState<Point[]>([]);
@@ -119,7 +122,38 @@ export default function TestarPage() {
     if (!file) return;
     const url = URL.createObjectURL(file);
     setVideoSrc(url);
+    setUrlError(null);
     setStep(calibration ? "detect" : "calibrate");
+  }
+
+  async function handleUrlLoad() {
+    const url = urlInput.trim();
+    if (!url) return;
+
+    setUrlLoading(true);
+    setUrlError(null);
+
+    try {
+      // Route through our proxy API to handle CORS and YouTube
+      const proxyUrl = `/api/video-proxy?url=${encodeURIComponent(url)}`;
+
+      // Test that the proxy responds before setting as source
+      const testRes = await fetch(proxyUrl, { method: "HEAD" }).catch(() => null);
+      // HEAD might not work for streams, so just try GET with range
+      if (testRes && !testRes.ok) {
+        // Try GET to get actual error
+        const errRes = await fetch(proxyUrl);
+        const errBody = await errRes.json().catch(() => ({ error: "Erro desconhecido" }));
+        throw new Error(errBody.error || `HTTP ${errRes.status}`);
+      }
+
+      setVideoSrc(proxyUrl);
+      setStep(calibration ? "detect" : "calibrate");
+    } catch (err) {
+      setUrlError((err as Error).message);
+    } finally {
+      setUrlLoading(false);
+    }
   }
 
   function handleVideoLoaded() {
@@ -372,25 +406,62 @@ export default function TestarPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold mb-2">Modo Teste</h1>
           <p className="text-zinc-400 text-sm">
-            Suba um vídeo de tênis para validar a detecção
+            Suba um vídeo ou cole uma URL do YouTube
           </p>
         </div>
 
-        <label className="w-full max-w-sm cursor-pointer">
-          <div className="border-2 border-dashed border-zinc-600 rounded-2xl p-8 text-center hover:border-zinc-400 transition-colors">
-            <div className="text-4xl mb-3">📹</div>
-            <p className="text-zinc-300 font-medium mb-1">
-              Selecionar vídeo
-            </p>
-            <p className="text-zinc-500 text-xs">MP4, MOV, WebM</p>
+        <div className="w-full max-w-sm space-y-4">
+          {/* File upload */}
+          <label className="block cursor-pointer">
+            <div className="border-2 border-dashed border-zinc-600 rounded-2xl p-6 text-center hover:border-zinc-400 transition-colors">
+              <div className="text-4xl mb-2">📹</div>
+              <p className="text-zinc-300 font-medium mb-1">
+                Selecionar vídeo
+              </p>
+              <p className="text-zinc-500 text-xs">MP4, MOV, WebM</p>
+            </div>
+            <input
+              type="file"
+              accept="video/*"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+          </label>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-zinc-700" />
+            <span className="text-zinc-500 text-xs">ou</span>
+            <div className="flex-1 h-px bg-zinc-700" />
           </div>
-          <input
-            type="file"
-            accept="video/*"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-        </label>
+
+          {/* URL input */}
+          <div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleUrlLoad()}
+                placeholder="Cole URL do YouTube ou vídeo direto"
+                className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500"
+              />
+              <button
+                onClick={handleUrlLoad}
+                disabled={!urlInput.trim() || urlLoading}
+                className="px-5 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+              >
+                {urlLoading ? "..." : "Carregar"}
+              </button>
+            </div>
+            {urlError && (
+              <p className="text-red-400 text-xs mt-2">{urlError}</p>
+            )}
+            <p className="text-zinc-600 text-xs mt-2">
+              YouTube, Vimeo, ou link direto para .mp4
+            </p>
+          </div>
+        </div>
 
         <a
           href="/"
