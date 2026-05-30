@@ -134,17 +134,16 @@ export default function TestarPage() {
     setUrlError(null);
 
     try {
-      // Route through our proxy API to handle CORS and YouTube
       const proxyUrl = `/api/video-proxy?url=${encodeURIComponent(url)}`;
 
-      // Test that the proxy responds before setting as source
-      const testRes = await fetch(proxyUrl, { method: "HEAD" }).catch(() => null);
-      // HEAD might not work for streams, so just try GET with range
-      if (testRes && !testRes.ok) {
-        // Try GET to get actual error
-        const errRes = await fetch(proxyUrl);
-        const errBody = await errRes.json().catch(() => ({ error: "Erro desconhecido" }));
-        throw new Error(errBody.error || `HTTP ${errRes.status}`);
+      // Test with a small range request to verify the proxy works
+      const testRes = await fetch(proxyUrl, {
+        headers: { Range: "bytes=0-1023" },
+      });
+
+      if (!testRes.ok && testRes.status !== 206) {
+        const errBody = await testRes.json().catch(() => ({ error: "Erro desconhecido" }));
+        throw new Error(errBody.error || `HTTP ${testRes.status}`);
       }
 
       setVideoSrc(proxyUrl);
@@ -504,13 +503,13 @@ export default function TestarPage() {
           />
         )}
 
-        <div className="absolute top-0 left-0 right-0 bg-black/70 px-4 py-2 text-center">
+        <div className="absolute top-0 left-0 right-0 bg-black/70 px-4 py-2 text-center z-10">
           <p className="text-zinc-300 text-sm">
             Marque os 4 cantos da quadra no primeiro frame do vídeo
           </p>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-gradient-to-t from-black/80 to-transparent">
+        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-gradient-to-t from-black/80 to-transparent z-10">
           <button
             onClick={() => {
               setStep("upload");

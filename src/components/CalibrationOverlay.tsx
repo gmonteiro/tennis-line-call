@@ -5,6 +5,7 @@ import type { Point } from "@/types";
 import { CALIBRATION_TARGETS } from "@/lib/court-geometry";
 import { computeHomography, invertHomography, applyHomography } from "@/lib/homography";
 import { COURT_LINES } from "@/lib/court-geometry";
+import { containerToVideoCoords, getVideoRect } from "@/lib/video-fit";
 
 const CORNER_LABELS = [
   "Fundo Esquerdo (baseline)",
@@ -38,13 +39,15 @@ export default function CalibrationOverlay({
       if (!canvas) return;
 
       const rect = canvas.getBoundingClientRect();
-      const scaleX = videoWidth / rect.width;
-      const scaleY = videoHeight / rect.height;
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
 
-      onTap({
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY,
-      });
+      const coords = containerToVideoCoords(
+        clickX, clickY,
+        rect.width, rect.height,
+        videoWidth, videoHeight
+      );
+      if (coords) onTap(coords);
     },
     [videoWidth, videoHeight, onTap]
   );
@@ -57,13 +60,15 @@ export default function CalibrationOverlay({
 
       const touch = e.touches[0];
       const rect = canvas.getBoundingClientRect();
-      const scaleX = videoWidth / rect.width;
-      const scaleY = videoHeight / rect.height;
+      const clickX = touch.clientX - rect.left;
+      const clickY = touch.clientY - rect.top;
 
-      onTap({
-        x: (touch.clientX - rect.left) * scaleX,
-        y: (touch.clientY - rect.top) * scaleY,
-      });
+      const coords = containerToVideoCoords(
+        clickX, clickY,
+        rect.width, rect.height,
+        videoWidth, videoHeight
+      );
+      if (coords) onTap(coords);
     },
     [videoWidth, videoHeight, onTap]
   );
@@ -72,50 +77,60 @@ export default function CalibrationOverlay({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    canvas.width = videoWidth;
-    canvas.height = videoHeight;
+    // Use the container's actual pixel size for the canvas resolution
+    const containerWidth = canvas.clientWidth;
+    const containerHeight = canvas.clientHeight;
+    canvas.width = containerWidth;
+    canvas.height = containerHeight;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, videoWidth, videoHeight);
+    ctx.clearRect(0, 0, containerWidth, containerHeight);
+
+    // Compute the video's actual rendered area within the container
+    const vr = getVideoRect(containerWidth, containerHeight, videoWidth, videoHeight);
+
+    // Helper: convert video pixel coords to canvas coords
+    const toCanvas = (vx: number, vy: number): [number, number] => [
+      vr.offsetX + (vx / videoWidth) * vr.width,
+      vr.offsetY + (vy / videoHeight) * vr.height,
+    ];
 
     // Draw instruction text
     if (points.length < 4) {
       const label = CORNER_LABELS[points.length];
       ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-      ctx.fillRect(0, 0, videoWidth, 60);
+      ctx.fillRect(0, 0, containerWidth, 50);
       ctx.fillStyle = "#ffffff";
-      ctx.font = `bold ${Math.max(16, videoWidth / 40)}px sans-serif`;
+      ctx.font = `bold ${Math.max(16, containerWidth / 50)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(
         `Toque no canto ${points.length + 1}/4: ${label}`,
-        videoWidth / 2,
-        38
+        containerWidth / 2,
+        33
       );
     }
 
     // Draw placed markers
     points.forEach((point, i) => {
       const color = MARKER_COLORS[i];
+      const [cx, cy] = toCanvas(point.x, point.y);
 
-      // Outer circle
       ctx.beginPath();
-      ctx.arc(point.x, point.y, 14, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 14, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
 
-      // Inner circle
       ctx.beginPath();
-      ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 6, 0, Math.PI * 2);
       ctx.fillStyle = "#ffffff";
       ctx.fill();
 
-      // Label
       ctx.fillStyle = color;
-      ctx.font = `bold ${Math.max(12, videoWidth / 60)}px sans-serif`;
+      ctx.font = `bold ${Math.max(12, containerWidth / 70)}px sans-serif`;
       ctx.textAlign = "left";
-      ctx.fillText(`${i + 1}`, point.x + 18, point.y + 5);
+      ctx.fillText(`${i + 1}`, cx + 18, cy + 5);
     });
 
     // Draw connecting lines between placed points
@@ -124,12 +139,14 @@ export default function CalibrationOverlay({
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
       ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
+      const [x0, y0] = toCanvas(points[0].x, points[0].y);
+      ctx.moveTo(x0, y0);
       for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
+        const [x, y] = toCanvas(points[i].x, points[i].y);
+        ctx.lineTo(x, y);
       }
       if (points.length === 4) {
-        ctx.lineTo(points[0].x, points[0].y);
+        ctx.lineTo(x0, y0);
       }
       ctx.stroke();
       ctx.setLineDash([]);
@@ -150,14 +167,16 @@ export default function CalibrationOverlay({
         for (const line of COURT_LINES.singles) {
           const p1 = applyHomography(Hinv, line[0]);
           const p2 = applyHomography(Hinv, line[1]);
+          const [x1, y1] = toCanvas(p1.x, p1.y);
+          const [x2, y2] = toCanvas(p2.x, p2.y);
 
           ctx.beginPath();
-          ctx.moveTo(p1.x, p1.y);
-          ctx.lineTo(p2.x, p2.y);
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
           ctx.stroke();
         }
       } catch {
-        // Homography computation failed — points might be bad
+        // Homography computation failed
       }
     }
   }, [points, videoWidth, videoHeight, showProjection]);
@@ -168,7 +187,10 @@ export default function CalibrationOverlay({
       onClick={handleClick}
       onTouchStart={handleTouch}
       className="absolute inset-0 w-full h-full cursor-crosshair"
-      style={{ touchAction: "none" }}
+      style={{
+        touchAction: "none",
+        pointerEvents: points.length >= 4 ? "none" : "auto",
+      }}
     />
   );
 }

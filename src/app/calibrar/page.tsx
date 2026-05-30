@@ -121,7 +121,7 @@ export default function CalibrarPage() {
       )}
 
       {/* Bottom controls */}
-      <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-gradient-to-t from-black/80 to-transparent">
+      <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-gradient-to-t from-black/80 to-transparent z-10">
         <button
           onClick={() => router.push("/")}
           className="px-5 py-2 bg-zinc-700/80 text-white rounded-full text-sm font-medium backdrop-blur-sm"

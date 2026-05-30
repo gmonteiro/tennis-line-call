@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useEffect } from "react";
-import type { Point, BounceEvent, CallResult, Detection } from "@/types";
+import type { Point, CallResult, Detection } from "@/types";
 import { invertHomography, applyHomography } from "@/lib/homography";
 import { COURT_LINES } from "@/lib/court-geometry";
+import { getVideoRect } from "@/lib/video-fit";
 
 interface BounceMarker {
   point: Point;
@@ -38,13 +39,27 @@ export default function CourtOverlay({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    canvas.width = videoWidth;
-    canvas.height = videoHeight;
+    const containerWidth = canvas.clientWidth;
+    const containerHeight = canvas.clientHeight;
+    canvas.width = containerWidth;
+    canvas.height = containerHeight;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, videoWidth, videoHeight);
+    ctx.clearRect(0, 0, containerWidth, containerHeight);
+
+    // Compute the video's actual rendered area within the container
+    const vr = getVideoRect(containerWidth, containerHeight, videoWidth, videoHeight);
+
+    // Helper: convert video pixel coords to canvas coords
+    const toCanvas = (vx: number, vy: number): [number, number] => [
+      vr.offsetX + (vx / videoWidth) * vr.width,
+      vr.offsetY + (vy / videoHeight) * vr.height,
+    ];
+
+    // Scale factor for sizes (e.g., circle radii)
+    const scale = vr.width / videoWidth;
 
     // Draw projected court lines
     if (homography) {
@@ -56,10 +71,12 @@ export default function CourtOverlay({
       for (const line of COURT_LINES.singles) {
         const p1 = applyHomography(Hinv, line[0]);
         const p2 = applyHomography(Hinv, line[1]);
+        const [x1, y1] = toCanvas(p1.x, p1.y);
+        const [x2, y2] = toCanvas(p2.x, p2.y);
 
         ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
         ctx.stroke();
       }
     }
@@ -70,9 +87,12 @@ export default function CourtOverlay({
       const cy = currentDetection.y + currentDetection.height / 2;
       const r = Math.max(currentDetection.width, currentDetection.height) / 2;
 
+      const [canvasCx, canvasCy] = toCanvas(cx, cy);
+      const canvasR = r * scale;
+
       // Yellow circle around ball
       ctx.beginPath();
-      ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
+      ctx.arc(canvasCx, canvasCy, canvasR + 4, 0, Math.PI * 2);
       ctx.strokeStyle = "#facc15";
       ctx.lineWidth = 2;
       ctx.stroke();
@@ -81,10 +101,10 @@ export default function CourtOverlay({
       ctx.strokeStyle = "rgba(250, 204, 21, 0.5)";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(cx - r - 10, cy);
-      ctx.lineTo(cx + r + 10, cy);
-      ctx.moveTo(cx, cy - r - 10);
-      ctx.lineTo(cx, cy + r + 10);
+      ctx.moveTo(canvasCx - canvasR - 10, canvasCy);
+      ctx.lineTo(canvasCx + canvasR + 10, canvasCy);
+      ctx.moveTo(canvasCx, canvasCy - canvasR - 10);
+      ctx.lineTo(canvasCx, canvasCy + canvasR + 10);
       ctx.stroke();
     }
 
@@ -96,46 +116,46 @@ export default function CourtOverlay({
 
       const alpha = 1 - age / MARKER_DURATION_MS;
       const isOut = marker.call === "out" || marker.call === "fault";
+      const [mx, my] = toCanvas(marker.point.x, marker.point.y);
 
       ctx.beginPath();
-      ctx.arc(marker.point.x, marker.point.y, 12, 0, Math.PI * 2);
+      ctx.arc(mx, my, 12, 0, Math.PI * 2);
       ctx.fillStyle = isOut
         ? `rgba(239, 68, 68, ${alpha})`
         : `rgba(34, 197, 94, ${alpha})`;
       ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(marker.point.x, marker.point.y, 12, 0, Math.PI * 2);
+      ctx.arc(mx, my, 12, 0, Math.PI * 2);
       ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Label
       const label = isOut
         ? marker.call === "fault"
           ? "FAULT"
           : "FORA"
         : "BOA";
       ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-      ctx.font = `bold ${Math.max(14, videoWidth / 50)}px sans-serif`;
+      ctx.font = `bold 14px sans-serif`;
       ctx.textAlign = "center";
-      ctx.fillText(label, marker.point.x, marker.point.y - 18);
+      ctx.fillText(label, mx, my - 18);
     }
 
     // Flash border on call
     if (callFlash === "out" || callFlash === "fault") {
       ctx.strokeStyle = "rgba(239, 68, 68, 0.8)";
       ctx.lineWidth = 8;
-      ctx.strokeRect(4, 4, videoWidth - 8, videoHeight - 8);
+      ctx.strokeRect(4, 4, containerWidth - 8, containerHeight - 8);
     }
 
     // FPS counter
     ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-    ctx.fillRect(videoWidth - 80, 8, 72, 28);
+    ctx.fillRect(containerWidth - 80, 8, 72, 28);
     ctx.fillStyle = fps > 12 ? "#22c55e" : "#ef4444";
     ctx.font = "bold 14px monospace";
     ctx.textAlign = "right";
-    ctx.fillText(`${fps} FPS`, videoWidth - 16, 28);
+    ctx.fillText(`${fps} FPS`, containerWidth - 16, 28);
   }, [
     videoWidth,
     videoHeight,
