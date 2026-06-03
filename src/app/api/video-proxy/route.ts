@@ -14,6 +14,15 @@ const YT_DLP_PATHS = [
     "Scripts",
     "yt-dlp.exe"
   ),
+  path.join(
+    process.env.USERPROFILE || process.env.HOME || "",
+    "AppData",
+    "Local",
+    "Python",
+    "pythoncore-3.14-64",
+    "Scripts",
+    "yt-dlp.exe"
+  ),
   "yt-dlp", // fallback to PATH
 ];
 
